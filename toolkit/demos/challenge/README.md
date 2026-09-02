@@ -64,12 +64,12 @@ Both baseline notebooks apply the same rules before modeling:
    estimate preprocessing statistics.
 
 Every eligible observation is loaded, and validation always uses every eligible
-observation. The default `TRAINING_SAMPLE_STRIDE = 1` also uses every training
-observation. To make a local experiment faster, set it to `N` to train the
-model on every Nth observation within each training instance. Fold-specific
-preprocessing still uses the complete training fold, and validation always uses
-every eligible observation. Report any non-default stride when comparing
-results.
+observation. The saved reference runs use `TRAINING_SAMPLE_STRIDE = 100`, which
+trains the model on every 100th observation within each training instance to
+keep the five-fold example practical. Set it to `1` to use every training
+observation, or to another `N` to use every Nth training observation.
+Fold-specific preprocessing still uses the complete training fold. Report the
+chosen stride when comparing results.
 
 For fault detection, cleaned label `0` remains normal and labels `1` through
 `9` become faulty. For multiclass classification, labels `0` through `9` are
