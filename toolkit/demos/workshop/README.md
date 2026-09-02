@@ -24,13 +24,13 @@ class directories (`0/` through `9/`) containing the Parquet instances.
 
 The remaining values have working repository-relative defaults:
 
-- `THREE_W_WORKSHOP_MATRIX_PATH`: the fixed challenge CSV;
+- `THREE_W_WORKSHOP_MATRIX_PATH`: the fixed split CSV;
 - `THREE_W_WORKSHOP_SPLIT_DIR`: where the five Toolkit text lists are written;
 - `THREE_W_WORKSHOP_MAX_INSTANCES_PER_CLASS`: `0` for the complete run, or `10`
   for a quick smoke check;
 - `THREE_W_WORKSHOP_SAMPLES_PER_LABEL_PER_INSTANCE`: bounded observations kept
   from each label in each instance;
-- `THREE_W_WORKSHOP_RANDOM_SEED`: organizer split seed and notebook model seed.
+- `THREE_W_WORKSHOP_RANDOM_SEED`: split-generation seed and notebook model seed.
 
 Values already exported by the shell take precedence over `.env`. The local
 `.env` is ignored by Git; `.env.example` is the shareable documentation and
@@ -74,44 +74,40 @@ Parquet path per line. Each list can be passed directly to
 `ParquetDatasetConfig(file_list=..., split="list")`; training paths are the
 complement of the selected validation list.
 
-## Split artifacts and challenge boundary
+## Create the Toolkit validation files
 
-Matrix assignment and matrix conversion are intentionally separate.
+We added `create_workshop_validation_files.py` to save participants the time of
+manually converting the split matrix. The 3W Toolkit already accepts a text file
+containing one dataset-relative Parquet path per line through
+`ParquetDatasetConfig(file_list=..., split="list")`.
 
-### Organizer only: generate the matrix
-
-`generate_workshop_split_matrix.py` discovers the complete dataset, stratifies
-by event class and source, keeps related real instances grouped, and writes only
-`instance_split_matrix.csv`:
-
-```bash
-python toolkit/demos/workshop/generate_workshop_split_matrix.py
-```
-
-This organizer-owned script is not part of the participant challenge package.
-Changing its seed or rerunning it can create a different assignment, so the
-checked-in matrix is the canonical starting point distributed to everyone.
-
-### Challenge facing: create the Toolkit lists
-
-`create_workshop_validation_files.py` contains no assignment, shuffling, or
-randomness. It validates the distributed CSV and deterministically creates the
-five one-path-per-line files expected by the 3W Toolkit:
+The helper validates `instance_split_matrix.csv` and creates the five text files
+in that format. It does not change the matrix assignment:
 
 ```bash
 python toolkit/demos/workshop/create_workshop_validation_files.py
 ```
 
-Every participant starts from the same `instance_split_matrix.csv`; the script
-only converts its five indicator columns into the legacy-compatible text-list
-format used by `ParquetDatasetConfig(file_list=..., split="list")`.
+The generated files are written to `THREE_W_WORKSHOP_SPLIT_DIR`, which defaults
+to `toolkit/demos/workshop/splits`.
 
-## Open the notebooks
+## Workshop notebook examples
 
-After activating the `3W` environment and creating `.env`, start Jupyter from
-the repository root—no environment-variable exports are needed:
+The workshop includes two notebooks that demonstrate how to load the generated
+split files, apply the agreed label rules, train a default 3W Toolkit model, and
+evaluate it over all five runs:
+
+- `multiclass_sample_classification.ipynb`: classify samples as labels `0`
+  through `9`;
+- `fault_detection.ipynb`: classify samples as normal (`0`) or faulty (`1`).
+
+## Run the workshop notebooks
+
+After creating `.env`, activate the `3W` environment and start Jupyter from the
+repository root. No environment-variable exports are needed:
 
 ```bash
+conda activate 3W
 jupyter notebook toolkit/demos/workshop
 ```
 
