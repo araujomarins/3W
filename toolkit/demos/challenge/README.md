@@ -50,8 +50,16 @@ Both baseline notebooks apply the same rules before modeling:
 3. map transient labels to their steady class with the Toolkit-configured
    offset (`105` becomes `5`);
 4. keep only the resulting labels `0` through `9`;
-5. apply the 3W Toolkit's default signal cleanup and global normalization;
-6. retain every remaining observation—there is no instance or row sampling.
+5. apply the 3W Toolkit's fixed signal-cleaning rules;
+6. for each run, fit median imputation on that run's training rows only and
+   apply the fitted imputer unchanged to validation;
+7. do not apply dataset-wide normalization or use validation observations to
+   estimate preprocessing statistics.
+
+Every eligible observation is loaded, and validation always uses every eligible
+observation. The default `TRAINING_SAMPLE_STRIDE = 1` also uses every training
+observation. To make a local experiment faster, set it to `N` to train on every
+Nth training observation. Report any non-default stride when comparing results.
 
 For fault detection, cleaned label `0` remains normal and labels `1` through
 `9` become faulty. For multiclass classification, labels `0` through `9` are
@@ -83,7 +91,9 @@ The files are written to `THREE_W_CHALLENGE_SPLIT_DIR` and named
 Each notebook loads the fixed validation files with the 3W Toolkit, fits a
 fresh default decision tree for each run, and reports per-run metrics plus an
 aggregated confusion matrix. These results are a reproducible starting point,
-not a target model architecture for participants.
+not a target model architecture for participants. During each run, the notebook
+prints the training and validation sizes and progress through imputation,
+training, prediction, and metric calculation.
 
 ## Run the notebooks
 
