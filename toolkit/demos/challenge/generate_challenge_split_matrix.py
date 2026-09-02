@@ -1,4 +1,4 @@
-"""Organizer-only generator for the fixed 3W workshop split matrix.
+"""Organizer-only generator for the fixed 3W challenge split matrix.
 
 This script discovers the complete dataset and performs the grouped, stratified
 assignment. Challenge participants receive the resulting CSV, not this
@@ -16,58 +16,32 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
 from sklearn.model_selection import StratifiedGroupKFold
 
 N_SPLITS = 5
 DEFAULT_SEED = 42
 SPLIT_COLUMNS = tuple(f"split_{number}" for number in range(1, N_SPLITS + 1))
 REAL_INSTANCE = re.compile(r"^(WELL-\d+)_(\d{8})")
-WORKSHOP_DIR = Path(__file__).resolve().parent
-REPO_ROOT = WORKSHOP_DIR.parents[2]
-ENV_FILE = REPO_ROOT / ".env"
+load_dotenv()
 
-
-def load_env_file(path: Path = ENV_FILE) -> None:
-    """Load simple KEY=VALUE entries without overriding the shell environment."""
-
-    if not path.is_file():
-        return
-    for line_number, raw_line in enumerate(
-        path.read_text(encoding="utf-8").splitlines(), start=1
-    ):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line.removeprefix("export ").lstrip()
-        key, separator, value = line.partition("=")
-        key = key.strip()
-        if not separator or not key.isidentifier():
-            raise ValueError(f"Invalid .env entry at {path}:{line_number}")
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-            value = value[1:-1]
-        os.environ.setdefault(key, value)
-
-
-def configured_path(variable: str, default: Path) -> Path:
-    """Resolve an environment path relative to the repository root."""
-
-    value = os.getenv(variable)
-    path = Path(value).expanduser() if value else default
-    return path if path.is_absolute() else REPO_ROOT / path
-
-
-def configured_int(variable: str, default: int) -> int:
-    """Read an integer environment setting with a clear error message."""
-
-    value = os.getenv(variable)
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except ValueError as error:
-        raise ValueError(f"{variable} must be an integer, got {value!r}") from error
+DEFAULT_CHALLENGE_PATH = Path(__file__).resolve().parent
+REPOSITORY_PATH = Path(
+    os.getenv("THREE_W_REPOSITORY_PATH", str(DEFAULT_CHALLENGE_PATH.parents[2]))
+).expanduser()
+DATASET_PATH = Path(
+    os.getenv("THREE_W_DATASET_PATH", str(REPOSITORY_PATH / "dataset"))
+).expanduser()
+CHALLENGE_PATH = Path(
+    os.getenv("THREE_W_CHALLENGE_PATH", str(DEFAULT_CHALLENGE_PATH))
+).expanduser()
+MATRIX_PATH = Path(
+    os.getenv(
+        "THREE_W_CHALLENGE_MATRIX_PATH",
+        str(CHALLENGE_PATH / "instance_split_matrix.csv"),
+    )
+).expanduser()
+RANDOM_SEED = int(os.getenv("THREE_W_CHALLENGE_RANDOM_SEED", str(DEFAULT_SEED)))
 
 
 @dataclass(frozen=True)
@@ -250,27 +224,24 @@ def _summary(records: list[InstanceRecord], assignment: dict[str, int]) -> list[
 def parse_args() -> argparse.Namespace:
     """Parse organizer overrides after loading repository configuration."""
 
-    load_env_file()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dataset-root",
         type=Path,
-        default=configured_path("THREE_W_DATASET_PATH", REPO_ROOT / "dataset"),
+        default=DATASET_PATH,
         help="Complete 3W Dataset root (default: THREE_W_DATASET_PATH).",
     )
     parser.add_argument(
         "--matrix",
         type=Path,
-        default=configured_path(
-            "THREE_W_WORKSHOP_MATRIX_PATH", WORKSHOP_DIR / "instance_split_matrix.csv"
-        ),
-        help="Matrix output path (default: THREE_W_WORKSHOP_MATRIX_PATH).",
+        default=MATRIX_PATH,
+        help="Matrix output path (default: THREE_W_CHALLENGE_MATRIX_PATH).",
     )
     parser.add_argument(
         "--seed",
         type=int,
-        default=configured_int("THREE_W_WORKSHOP_RANDOM_SEED", DEFAULT_SEED),
-        help="Grouped stratification seed (default: THREE_W_WORKSHOP_RANDOM_SEED).",
+        default=RANDOM_SEED,
+        help="Grouped stratification seed (default: THREE_W_CHALLENGE_RANDOM_SEED).",
     )
     return parser.parse_args()
 

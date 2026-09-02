@@ -4,7 +4,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-_WORKSHOP = Path(__file__).parents[1] / "toolkit" / "demos" / "workshop"
+_CHALLENGE = Path(__file__).parents[1] / "toolkit" / "demos" / "challenge"
 
 
 def _load_module(name: str, path: Path):
@@ -17,12 +17,12 @@ def _load_module(name: str, path: Path):
 
 
 _GENERATOR = _load_module(
-    "generate_workshop_split_matrix",
-    _WORKSHOP / "generate_workshop_split_matrix.py",
+    "generate_challenge_split_matrix",
+    _CHALLENGE / "generate_challenge_split_matrix.py",
 )
 _CONVERTER = _load_module(
-    "create_workshop_validation_files",
-    _WORKSHOP / "create_workshop_validation_files.py",
+    "create_challenge_validation_files",
+    _CHALLENGE / "create_challenge_validation_files.py",
 )
 
 
@@ -79,7 +79,7 @@ def test_matrix_converts_to_five_disjoint_validation_lists(tmp_path: Path) -> No
 
 
 def test_checked_in_v2_matrix_matches_validation_lists() -> None:
-    rows = _CONVERTER.read_matrix(_WORKSHOP / "instance_split_matrix.csv")
+    rows = _CONVERTER.read_matrix(_CHALLENGE / "instance_split_matrix.csv")
     expected_by_split = {
         split_number: {
             row["instance"] for row in rows if row[f"split_{split_number}"] == "1"
@@ -88,7 +88,7 @@ def test_checked_in_v2_matrix_matches_validation_lists() -> None:
     }
     actual_by_split = {
         split_number: set(
-            (_WORKSHOP / "splits" / f"validation_split_{split_number}.txt")
+            (_CHALLENGE / "splits" / f"validation_split_{split_number}.txt")
             .read_text(encoding="utf-8")
             .splitlines()
         )
@@ -128,7 +128,7 @@ def test_challenge_converter_is_deterministic_and_assignment_free(
 
     assert [path.read_bytes() for path in second] == first_contents
     assert first[0].read_text(encoding="utf-8") == "4/a.parquet\n4/z.parquet\n"
-    source = (_WORKSHOP / "create_workshop_validation_files.py").read_text(
+    source = (_CHALLENGE / "create_challenge_validation_files.py").read_text(
         encoding="utf-8"
     )
     assert "sklearn" not in source

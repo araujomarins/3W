@@ -45,6 +45,7 @@ dependencies = [
     "pylatex>=1.4.2",
     "statsmodels>=0.14.5",
     "requests>=2.31,<3",
+    "python-dotenv>=1.0.0",
     "nbconvert",
     "nbformat",
     "dtaidistance>=2.3",

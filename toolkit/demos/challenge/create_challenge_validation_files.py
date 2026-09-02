@@ -12,42 +12,28 @@ import csv
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 N_SPLITS = 5
 SPLIT_COLUMNS = tuple(f"split_{number}" for number in range(1, N_SPLITS + 1))
-WORKSHOP_DIR = Path(__file__).resolve().parent
-REPO_ROOT = WORKSHOP_DIR.parents[2]
-ENV_FILE = REPO_ROOT / ".env"
+load_dotenv()
 
-
-def load_env_file(path: Path = ENV_FILE) -> None:
-    """Load simple KEY=VALUE entries without overriding the shell environment."""
-
-    if not path.is_file():
-        return
-    for line_number, raw_line in enumerate(
-        path.read_text(encoding="utf-8").splitlines(), start=1
-    ):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line.removeprefix("export ").lstrip()
-        key, separator, value = line.partition("=")
-        key = key.strip()
-        if not separator or not key.isidentifier():
-            raise ValueError(f"Invalid .env entry at {path}:{line_number}")
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-            value = value[1:-1]
-        os.environ.setdefault(key, value)
-
-
-def configured_path(variable: str, default: Path) -> Path:
-    """Resolve an environment path relative to the repository root."""
-
-    value = os.getenv(variable)
-    path = Path(value).expanduser() if value else default
-    return path if path.is_absolute() else REPO_ROOT / path
+DEFAULT_CHALLENGE_PATH = Path(__file__).resolve().parent
+REPOSITORY_PATH = Path(
+    os.getenv("THREE_W_REPOSITORY_PATH", str(DEFAULT_CHALLENGE_PATH.parents[2]))
+).expanduser()
+CHALLENGE_PATH = Path(
+    os.getenv("THREE_W_CHALLENGE_PATH", str(DEFAULT_CHALLENGE_PATH))
+).expanduser()
+MATRIX_PATH = Path(
+    os.getenv(
+        "THREE_W_CHALLENGE_MATRIX_PATH",
+        str(CHALLENGE_PATH / "instance_split_matrix.csv"),
+    )
+).expanduser()
+SPLIT_DIR = Path(
+    os.getenv("THREE_W_CHALLENGE_SPLIT_DIR", str(CHALLENGE_PATH / "splits"))
+).expanduser()
 
 
 def read_matrix(matrix_path: Path) -> list[dict[str, str]]:
@@ -105,21 +91,18 @@ def matrix_to_validation_files(matrix_path: Path, output_dir: Path) -> list[Path
 def parse_args() -> argparse.Namespace:
     """Parse deterministic conversion paths from .env or CLI overrides."""
 
-    load_env_file()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--matrix",
         type=Path,
-        default=configured_path(
-            "THREE_W_WORKSHOP_MATRIX_PATH", WORKSHOP_DIR / "instance_split_matrix.csv"
-        ),
-        help="Fixed matrix input path (default: THREE_W_WORKSHOP_MATRIX_PATH).",
+        default=MATRIX_PATH,
+        help="Fixed matrix input path (default: THREE_W_CHALLENGE_MATRIX_PATH).",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=configured_path("THREE_W_WORKSHOP_SPLIT_DIR", WORKSHOP_DIR / "splits"),
-        help="Validation-list directory (default: THREE_W_WORKSHOP_SPLIT_DIR).",
+        default=SPLIT_DIR,
+        help="Validation-list directory (default: THREE_W_CHALLENGE_SPLIT_DIR).",
     )
     return parser.parse_args()
 
