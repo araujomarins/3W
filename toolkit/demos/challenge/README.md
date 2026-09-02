@@ -13,13 +13,19 @@ the same dataset version, cleaning rules, and fixed validation files.
 
 ## Configure the challenge
 
-Create the Conda environment and copy the example configuration:
+Create a virtual environment, install the project with its development tools,
+and copy the example configuration:
 
 ```bash
-conda env create -f environment.yml
-conda activate 3W
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
 cp .env.example .env
 ```
+
+If you already use a Conda environment, activate it and run
+`python -m pip install -e ".[dev]"` instead. The development dependencies
+include the Jupyter Notebook application.
 
 The scripts and notebooks use `python-dotenv` to load `.env` automatically.
 Update these values before running them:
@@ -50,16 +56,20 @@ Both baseline notebooks apply the same rules before modeling:
 3. map transient labels to their steady class with the Toolkit-configured
    offset (`105` becomes `5`);
 4. keep only the resulting labels `0` through `9`;
-5. apply the 3W Toolkit's fixed signal-cleaning rules;
-6. for each run, fit median imputation on that run's training rows only and
-   apply the fitted imputer unchanged to validation;
+5. for each run, fit the 3W Toolkit's `CleanSignals` thresholds on that run's
+   training instances only and apply them unchanged to validation;
+6. fit Toolkit mean imputation on that run's cleaned training observations
+   only and apply the fitted values unchanged to validation;
 7. do not apply dataset-wide normalization or use validation observations to
    estimate preprocessing statistics.
 
 Every eligible observation is loaded, and validation always uses every eligible
 observation. The default `TRAINING_SAMPLE_STRIDE = 1` also uses every training
-observation. To make a local experiment faster, set it to `N` to train on every
-Nth training observation. Report any non-default stride when comparing results.
+observation. To make a local experiment faster, set it to `N` to train the
+model on every Nth observation within each training instance. Fold-specific
+preprocessing still uses the complete training fold, and validation always uses
+every eligible observation. Report any non-default stride when comparing
+results.
 
 For fault detection, cleaned label `0` remains normal and labels `1` through
 `9` become faulty. For multiclass classification, labels `0` through `9` are
@@ -92,16 +102,15 @@ Each notebook loads the fixed validation files with the 3W Toolkit, fits a
 fresh default decision tree for each run, and reports per-run metrics plus an
 aggregated confusion matrix. These results are a reproducible starting point,
 not a target model architecture for participants. During each run, the notebook
-prints the training and validation sizes and progress through imputation,
-training, prediction, and metric calculation.
+prints the training and validation sizes and progress through fold-specific
+cleaning and imputation, training, prediction, and metric calculation.
 
 ## Run the notebooks
 
-After configuring `.env`, activate the `3W` environment and launch Jupyter from
-the repository root:
+After configuring `.env`, activate your environment and launch Jupyter from the
+repository root:
 
 ```bash
-conda activate 3W
 jupyter notebook toolkit/demos/challenge
 ```
 
