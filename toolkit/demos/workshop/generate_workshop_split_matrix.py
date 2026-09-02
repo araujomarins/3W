@@ -233,7 +233,7 @@ def _summary(records: list[InstanceRecord], assignment: dict[str, int]) -> list[
     lines = []
     for split in range(1, N_SPLITS + 1):
         total = sum(count for key, count in counts.items() if key[0] == split)
-        class_counts = Counter()
+        class_counts: Counter[int] = Counter()
         for (candidate_split, event_class, _source), count in counts.items():
             if candidate_split == split:
                 class_counts[event_class] += count
