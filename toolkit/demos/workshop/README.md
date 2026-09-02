@@ -9,6 +9,33 @@ Both notebooks use the same fixed five-split instance partition and a 3W
 Toolkit model with default model hyperparameters. They do not perform model
 selection or hyperparameter search.
 
+## Configure the workshop
+
+All workshop entry points automatically read `.env` from the repository root.
+Create it once from the documented template:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and replace `THREE_W_DATASET_PATH` with the absolute path to your
+complete 3W Dataset v2.0.0 directory. Its immediate children must be the event
+class directories (`0/` through `9/`) containing the Parquet instances.
+
+The remaining values have working repository-relative defaults:
+
+- `THREE_W_WORKSHOP_MATRIX_PATH`: the fixed challenge CSV;
+- `THREE_W_WORKSHOP_SPLIT_DIR`: where the five Toolkit text lists are written;
+- `THREE_W_WORKSHOP_MAX_INSTANCES_PER_CLASS`: `0` for the complete run, or `10`
+  for a quick smoke check;
+- `THREE_W_WORKSHOP_SAMPLES_PER_LABEL_PER_INSTANCE`: bounded observations kept
+  from each label in each instance;
+- `THREE_W_WORKSHOP_RANDOM_SEED`: organizer split seed and notebook model seed.
+
+Values already exported by the shell take precedence over `.env`. The local
+`.env` is ignored by Git; `.env.example` is the shareable documentation and
+must not contain machine-specific paths or secrets.
+
 ## Label rules
 
 The notebooks apply the workshop rules before modeling:
@@ -47,23 +74,45 @@ Parquet path per line. Each list can be passed directly to
 `ParquetDatasetConfig(file_list=..., split="list")`; training paths are the
 complement of the selected validation list.
 
-## Rebuild the split artifacts
+## Split artifacts and challenge boundary
 
-To regenerate the matrix from a complete v2.0.0 dataset and then recreate the
-five text lists:
+Matrix assignment and matrix conversion are intentionally separate.
 
-```bash
-python toolkit/demos/workshop/prepare_workshop_splits.py \
-  --dataset-root /path/to/3W/dataset
-```
+### Organizer only: generate the matrix
 
-To validate the checked-in matrix and recreate only the text files:
+`generate_workshop_split_matrix.py` discovers the complete dataset, stratifies
+by event class and source, keeps related real instances grouped, and writes only
+`instance_split_matrix.csv`:
 
 ```bash
-python toolkit/demos/workshop/prepare_workshop_splits.py
+python toolkit/demos/workshop/generate_workshop_split_matrix.py
 ```
 
-Set `THREE_W_DATASET_PATH` before running a notebook if the complete dataset is
-not in this repository's `dataset/` directory. For a quick workshop smoke run,
-set `THREE_W_WORKSHOP_MAX_INSTANCES_PER_CLASS=10`; leave it unset or set it to
-`0` to use all instances.
+This organizer-owned script is not part of the participant challenge package.
+Changing its seed or rerunning it can create a different assignment, so the
+checked-in matrix is the canonical starting point distributed to everyone.
+
+### Challenge facing: create the Toolkit lists
+
+`create_workshop_validation_files.py` contains no assignment, shuffling, or
+randomness. It validates the distributed CSV and deterministically creates the
+five one-path-per-line files expected by the 3W Toolkit:
+
+```bash
+python toolkit/demos/workshop/create_workshop_validation_files.py
+```
+
+Every participant starts from the same `instance_split_matrix.csv`; the script
+only converts its five indicator columns into the legacy-compatible text-list
+format used by `ParquetDatasetConfig(file_list=..., split="list")`.
+
+## Open the notebooks
+
+After activating the `3W` environment and creating `.env`, start Jupyter from
+the repository root—no environment-variable exports are needed:
+
+```bash
+jupyter notebook toolkit/demos/workshop
+```
+
+Restart the kernel and run all cells after changing `.env`.

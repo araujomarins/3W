@@ -1,14 +1,15 @@
-"""Build the fixed five-split manifest used by the 3W workshop notebooks.
+"""Organizer-only generator for the fixed 3W workshop split matrix.
 
-With ``--dataset-root``, the script discovers the Parquet instances, creates a
-deterministic leakage-aware matrix, and writes the five validation lists.
-Without it, the checked-in matrix is validated and converted to text lists.
+This script discovers the complete dataset and performs the grouped, stratified
+assignment. Challenge participants receive the resulting CSV, not this
+generation step; their starting split assignment must remain fixed.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import os
 import re
 import warnings
 from collections import Counter, defaultdict
@@ -21,6 +22,52 @@ N_SPLITS = 5
 DEFAULT_SEED = 42
 SPLIT_COLUMNS = tuple(f"split_{number}" for number in range(1, N_SPLITS + 1))
 REAL_INSTANCE = re.compile(r"^(WELL-\d+)_(\d{8})")
+WORKSHOP_DIR = Path(__file__).resolve().parent
+REPO_ROOT = WORKSHOP_DIR.parents[2]
+ENV_FILE = REPO_ROOT / ".env"
+
+
+def load_env_file(path: Path = ENV_FILE) -> None:
+    """Load simple KEY=VALUE entries without overriding the shell environment."""
+
+    if not path.is_file():
+        return
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").lstrip()
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        if not separator or not key.isidentifier():
+            raise ValueError(f"Invalid .env entry at {path}:{line_number}")
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+def configured_path(variable: str, default: Path) -> Path:
+    """Resolve an environment path relative to the repository root."""
+
+    value = os.getenv(variable)
+    path = Path(value).expanduser() if value else default
+    return path if path.is_absolute() else REPO_ROOT / path
+
+
+def configured_int(variable: str, default: int) -> int:
+    """Read an integer environment setting with a clear error message."""
+
+    value = os.getenv(variable)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError as error:
+        raise ValueError(f"{variable} must be an integer, got {value!r}") from error
 
 
 @dataclass(frozen=True)
@@ -91,7 +138,7 @@ def discover_instances(dataset_root: Path) -> list[InstanceRecord]:
 def assign_validation_splits(
     records: list[InstanceRecord], seed: int = DEFAULT_SEED
 ) -> dict[str, int]:
-    """Assign each instance to one leakage-aware validation split."""
+    """Assign every instance to one leakage-aware validation split."""
 
     if len({record.path for record in records}) != len(records):
         raise ValueError("Instance paths must be unique.")
@@ -154,7 +201,7 @@ def assign_validation_splits(
 def write_matrix(
     records: list[InstanceRecord], assignment: dict[str, int], matrix_path: Path
 ) -> None:
-    """Write the instance-by-split binary matrix."""
+    """Write the canonical instance-by-split binary matrix."""
 
     matrix_path.parent.mkdir(parents=True, exist_ok=True)
     with matrix_path.open("w", encoding="utf-8", newline="") as output:
@@ -176,58 +223,8 @@ def write_matrix(
             writer.writerow(row)
 
 
-def read_matrix(matrix_path: Path) -> list[dict[str, str]]:
-    """Read and validate a five-split matrix."""
-
-    with matrix_path.open(encoding="utf-8", newline="") as source:
-        reader = csv.DictReader(source)
-        expected_columns = ["instance", *SPLIT_COLUMNS]
-        if reader.fieldnames != expected_columns:
-            raise ValueError(
-                f"Expected matrix columns {expected_columns}, got {reader.fieldnames}."
-            )
-        rows = list(reader)
-
-    if not rows:
-        raise ValueError("The split matrix must contain at least one instance.")
-
-    instances = [row["instance"] for row in rows]
-    if len(set(instances)) != len(instances):
-        raise ValueError("The split matrix contains duplicate instance paths.")
-
-    for row in rows:
-        indicators = [row[column] for column in SPLIT_COLUMNS]
-        if any(value not in {"0", "1"} for value in indicators):
-            raise ValueError(
-                f"Split indicators for {row['instance']!r} must be binary."
-            )
-        if sum(map(int, indicators)) != 1:
-            raise ValueError(
-                f"Instance {row['instance']!r} must be validation exactly once."
-            )
-    return rows
-
-
-def matrix_to_validation_files(matrix_path: Path, output_dir: Path) -> list[Path]:
-    """Convert a matrix to five toolkit-compatible validation file lists."""
-
-    rows = read_matrix(matrix_path)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    outputs: list[Path] = []
-
-    for split_number, column in enumerate(SPLIT_COLUMNS, start=1):
-        instances = sorted(row["instance"] for row in rows if row[column] == "1")
-        path = output_dir / f"validation_split_{split_number}.txt"
-        path.write_text(
-            "".join(f"{instance}\n" for instance in instances), encoding="utf-8"
-        )
-        outputs.append(path)
-
-    return outputs
-
-
 def _summary(records: list[InstanceRecord], assignment: dict[str, int]) -> list[str]:
-    """Build concise class/source balance lines for the command output."""
+    """Build concise class/source balance lines for organizer review."""
 
     counts = Counter(
         (assignment[record.path], record.event_class, record.source)
@@ -251,52 +248,43 @@ def _summary(records: list[InstanceRecord], assignment: dict[str, int]) -> list[
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
+    """Parse organizer overrides after loading repository configuration."""
 
-    workshop_dir = Path(__file__).resolve().parent
+    load_env_file()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dataset-root",
         type=Path,
-        help="Regenerate the matrix from this 3W Dataset root before conversion.",
+        default=configured_path("THREE_W_DATASET_PATH", REPO_ROOT / "dataset"),
+        help="Complete 3W Dataset root (default: THREE_W_DATASET_PATH).",
     )
     parser.add_argument(
         "--matrix",
         type=Path,
-        default=workshop_dir / "instance_split_matrix.csv",
-        help="Input/output split matrix path.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=workshop_dir / "splits",
-        help="Directory for validation_split_1.txt through validation_split_5.txt.",
+        default=configured_path(
+            "THREE_W_WORKSHOP_MATRIX_PATH", WORKSHOP_DIR / "instance_split_matrix.csv"
+        ),
+        help="Matrix output path (default: THREE_W_WORKSHOP_MATRIX_PATH).",
     )
     parser.add_argument(
         "--seed",
         type=int,
-        default=DEFAULT_SEED,
-        help="Deterministic seed used only when regenerating the matrix.",
+        default=configured_int("THREE_W_WORKSHOP_RANDOM_SEED", DEFAULT_SEED),
+        help="Grouped stratification seed (default: THREE_W_WORKSHOP_RANDOM_SEED).",
     )
     return parser.parse_args()
 
 
 def main() -> None:
-    """Generate or convert the workshop split artifacts."""
+    """Generate the organizer-owned matrix and stop before conversion."""
 
     args = parse_args()
-    if args.dataset_root is not None:
-        records = discover_instances(args.dataset_root)
-        assignment = assign_validation_splits(records, seed=args.seed)
-        write_matrix(records, assignment, args.matrix)
-        print(f"Wrote {len(records)} rows to {args.matrix}")
-        for line in _summary(records, assignment):
-            print(line)
-
-    outputs = matrix_to_validation_files(args.matrix, args.output_dir)
-    print("Wrote validation lists:")
-    for output in outputs:
-        print(f"- {output}")
+    records = discover_instances(args.dataset_root)
+    assignment = assign_validation_splits(records, seed=args.seed)
+    write_matrix(records, assignment, args.matrix)
+    print(f"Wrote {len(records)} rows to {args.matrix}")
+    for line in _summary(records, assignment):
+        print(line)
 
 
 if __name__ == "__main__":

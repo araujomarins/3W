@@ -4,19 +4,26 @@ import importlib.util
 import sys
 from pathlib import Path
 
-_SCRIPT = (
-    Path(__file__).parents[1]
-    / "toolkit"
-    / "demos"
-    / "workshop"
-    / "prepare_workshop_splits.py"
+_WORKSHOP = Path(__file__).parents[1] / "toolkit" / "demos" / "workshop"
+
+
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_GENERATOR = _load_module(
+    "generate_workshop_split_matrix",
+    _WORKSHOP / "generate_workshop_split_matrix.py",
 )
-_WORKSHOP = _SCRIPT.parent
-_SPEC = importlib.util.spec_from_file_location("prepare_workshop_splits", _SCRIPT)
-assert _SPEC is not None and _SPEC.loader is not None
-_MODULE = importlib.util.module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = _MODULE
-_SPEC.loader.exec_module(_MODULE)
+_CONVERTER = _load_module(
+    "create_workshop_validation_files",
+    _WORKSHOP / "create_workshop_validation_files.py",
+)
 
 
 def _fake_dataset(root: Path) -> None:
@@ -34,10 +41,10 @@ def _fake_dataset(root: Path) -> None:
 def test_matrix_is_complete_deterministic_and_group_safe(tmp_path: Path) -> None:
     dataset_root = tmp_path / "dataset"
     _fake_dataset(dataset_root)
-    records = _MODULE.discover_instances(dataset_root)
+    records = _GENERATOR.discover_instances(dataset_root)
 
-    first = _MODULE.assign_validation_splits(records)
-    second = _MODULE.assign_validation_splits(records)
+    first = _GENERATOR.assign_validation_splits(records)
+    second = _GENERATOR.assign_validation_splits(records)
 
     assert first == second
     assert len(first) == len(records)
@@ -51,12 +58,12 @@ def test_matrix_is_complete_deterministic_and_group_safe(tmp_path: Path) -> None
 def test_matrix_converts_to_five_disjoint_validation_lists(tmp_path: Path) -> None:
     dataset_root = tmp_path / "dataset"
     _fake_dataset(dataset_root)
-    records = _MODULE.discover_instances(dataset_root)
-    assignment = _MODULE.assign_validation_splits(records)
+    records = _GENERATOR.discover_instances(dataset_root)
+    assignment = _GENERATOR.assign_validation_splits(records)
     matrix = tmp_path / "instance_split_matrix.csv"
-    _MODULE.write_matrix(records, assignment, matrix)
+    _GENERATOR.write_matrix(records, assignment, matrix)
 
-    outputs = _MODULE.matrix_to_validation_files(matrix, tmp_path / "splits")
+    outputs = _CONVERTER.matrix_to_validation_files(matrix, tmp_path / "splits")
 
     assert len(outputs) == 5
     validation_sets = [
@@ -72,7 +79,7 @@ def test_matrix_converts_to_five_disjoint_validation_lists(tmp_path: Path) -> No
 
 
 def test_checked_in_v2_matrix_matches_validation_lists() -> None:
-    rows = _MODULE.read_matrix(_WORKSHOP / "instance_split_matrix.csv")
+    rows = _CONVERTER.read_matrix(_WORKSHOP / "instance_split_matrix.csv")
     expected_by_split = {
         split_number: {
             row["instance"] for row in rows if row[f"split_{split_number}"] == "1"
@@ -97,3 +104,33 @@ def test_checked_in_v2_matrix_matches_validation_lists() -> None:
         446,
         445,
     ]
+
+
+def test_challenge_converter_is_deterministic_and_assignment_free(
+    tmp_path: Path,
+) -> None:
+    matrix = tmp_path / "matrix.csv"
+    matrix.write_text(
+        "instance,split_1,split_2,split_3,split_4,split_5\n"
+        "4/z.parquet,1,0,0,0,0\n"
+        "4/a.parquet,1,0,0,0,0\n"
+        "5/b.parquet,0,1,0,0,0\n"
+        "6/c.parquet,0,0,1,0,0\n"
+        "7/d.parquet,0,0,0,1,0\n"
+        "8/e.parquet,0,0,0,0,1\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "splits"
+
+    first = _CONVERTER.matrix_to_validation_files(matrix, output_dir)
+    first_contents = [path.read_bytes() for path in first]
+    second = _CONVERTER.matrix_to_validation_files(matrix, output_dir)
+
+    assert [path.read_bytes() for path in second] == first_contents
+    assert first[0].read_text(encoding="utf-8") == "4/a.parquet\n4/z.parquet\n"
+    source = (_WORKSHOP / "create_workshop_validation_files.py").read_text(
+        encoding="utf-8"
+    )
+    assert "sklearn" not in source
+    assert "random_state" not in source
+    assert "assign_validation_splits" not in source
