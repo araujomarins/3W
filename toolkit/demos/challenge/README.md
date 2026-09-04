@@ -87,8 +87,8 @@ observation, or to another `N` to use every Nth training observation.
 Fold-specific preprocessing still uses the complete retained training fold,
 including rows with filled labels. Validation is never subsampled: all retained
 rows are predicted and all originally labeled eligible rows are scored. Report
-the chosen stride when comparing results. Old notebook outputs were cleared
-when the label policy changed; rerun to produce current results.
+the chosen stride when comparing results. The saved notebook outputs follow
+this label policy and use the training stride shown in the code.
 
 For fault detection, cleaned label `0` remains normal and labels `1` through
 `9` become faulty. For multiclass classification, labels `0` through `9` are
