@@ -52,24 +52,43 @@ both training and validation in one run.
 Both baseline notebooks apply the same rules before modeling:
 
 1. load every instance listed across the five fixed validation files;
-2. remove observations whose `class` label is missing;
-3. map transient labels to their steady class with the Toolkit-configured
+2. remove only the consecutive rows with missing `class` labels at the beginning
+   of each instance, before its first observed label;
+3. record which remaining labels were originally observed, then fill later gaps
+   within each instance with `FillLabelsConfig(fill_method="nearest")`;
+4. map transient labels to their steady class with the Toolkit-configured
    offset (`105` becomes `5`);
-4. keep only the resulting labels `0` through `9`;
-5. for each run, fit the 3W Toolkit's `CleanSignals` thresholds on that run's
+5. keep only the resulting labels `0` through `9`;
+6. for each run, fit the 3W Toolkit's `CleanSignals` thresholds on that run's
    training instances only and apply them unchanged to validation;
-6. fit Toolkit mean imputation on that run's cleaned training observations
+7. fit Toolkit mean imputation on that run's cleaned training observations
    only and apply the fitted values unchanged to validation;
-7. do not apply dataset-wide normalization or use validation observations to
-   estimate preprocessing statistics.
+8. include filled labels during training, but exclude them from **every validation
+   metric**, including ROC-AUC and confusion matrices;
+9. do not apply dataset-wide normalization or use validation observations to
+   estimate signal-preprocessing statistics.
 
-Every eligible observation is loaded, and validation always uses every eligible
-observation. The saved reference runs use `TRAINING_SAMPLE_STRIDE = 100`, which
+The Toolkit's [FillLabels implementation](../../ThreeWToolkit/preprocessing/fill_labels.py)
+uses nearest interpolation by row position, followed by backward/forward fill
+for any remaining gaps. It does not fit a classifier or use another instance's
+labels. Trailing gaps are filled from the last known label. An entirely unlabeled
+instance is skipped and counted because it has no known label to interpolate.
+
+The shared `prepare_instance_labels` function in `challenge_helpers.py` keeps an
+original-label mask in metadata, outside the model's features. Both the binary
+and multiclass evaluation functions apply this mask to targets and predictions
+before calculating any metric. Validation rows with filled labels can pass through
+preprocessing and prediction, but they never become evaluation ground truth.
+
+Every eligible observation is loaded. The notebooks use `TRAINING_SAMPLE_STRIDE = 100`, which
 trains the model on every 100th observation within each training instance to
 keep the five-fold example practical. Set it to `1` to use every training
 observation, or to another `N` to use every Nth training observation.
-Fold-specific preprocessing still uses the complete training fold. Report the
-chosen stride when comparing results.
+Fold-specific preprocessing still uses the complete retained training fold,
+including rows with filled labels. Validation is never subsampled: all retained
+rows are predicted and all originally labeled eligible rows are scored. Report
+the chosen stride when comparing results. Old notebook outputs were cleared
+when the label policy changed; rerun to produce current results.
 
 For fault detection, cleaned label `0` remains normal and labels `1` through
 `9` become faulty. For multiclass classification, labels `0` through `9` are
@@ -105,6 +124,21 @@ not a target model architecture for participants. During each run, the notebook
 prints the training and validation sizes and progress through fold-specific
 cleaning and imputation, training, prediction, and metric calculation.
 
+`challenge_helpers.py` shares the label policy and data preparation between the
+notebooks. The training loop calls `split_fold_data`, `prepare_fold_data`,
+`train_default_model`, and the notebook's `evaluate_validation` function in order.
+The loading summary counts removed leading rows, entirely unlabeled instances,
+unsupported labels, and retained filled labels. Fold reports distinguish training
+rows with filled labels, all predicted validation rows (`validation_rows`),
+originally labeled rows scored (`validation_samples`), and filled validation
+labels excluded (`validation_imputed_labels_excluded`).
+
+Both notebooks report accuracy, balanced accuracy, macro-F1, and a pooled
+row-normalized confusion matrix. Fault detection also reports faulty-class
+precision, recall, F1, and ROC-AUC from fault probabilities. Scalar metrics are
+reported per fold and as an arithmetic mean. ROC-AUC is `NaN` when the scored
+validation labels contain only one class, and is excluded from that mean.
+
 ## Run the notebooks
 
 After configuring `.env`, activate your environment and launch Jupyter from the
@@ -115,5 +149,5 @@ jupyter notebook toolkit/demos/challenge
 ```
 
 Open a notebook and choose **Kernel → Restart Kernel and Run All Cells**. A full
-run reads all labeled observations from the complete dataset, so runtime and
+run reads all instances from the complete dataset, so runtime and
 memory use will depend on the machine.
